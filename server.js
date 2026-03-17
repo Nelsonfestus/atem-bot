@@ -184,6 +184,10 @@ app.get('/', (req, res) => {
 });
 
 // Twilio WhatsApp webhook — receives incoming messages
+// IMPORTANT: Responds to Twilio immediately with 200 OK, then processes
+// the AI response asynchronously and sends via REST API. This prevents
+// Twilio's 15-second webhook timeout from killing the request when the
+// AI API takes longer to respond.
 app.post('/webhook', async (req, res) => {
   const from = req.body.From; // e.g., "whatsapp:+447123456789"
   const body = req.body.Body;
@@ -200,21 +204,43 @@ app.post('/webhook', async (req, res) => {
     return;
   }
 
-  // Notify admin of incoming message
-  await notifyAdmin(userHash, 'IN', body);
-
-  // Get Atem response
-  const response = await getAtemResponse(from, body);
-
-  console.log(`[OUT] ${userHash}: ${response?.substring(0, 100)}`);
-
-  // Notify admin of outgoing response
-  await notifyAdmin(userHash, 'OUT', response);
-
-  // Send response via Twilio
+  // Immediately acknowledge Twilio with empty TwiML (prevents 15s timeout)
   const twiml = new twilio.twiml.MessagingResponse();
-  twiml.message(response);
   res.type('text/xml').send(twiml.toString());
+
+  // Process asynchronously — Twilio connection is already closed
+  try {
+    // Notify admin of incoming message
+    await notifyAdmin(userHash, 'IN', body);
+
+    // Get Atem response (may take 10-30 seconds)
+    const response = await getAtemResponse(from, body);
+
+    console.log(`[OUT] ${userHash}: ${response?.substring(0, 100)}`);
+
+    // Send reply via Twilio REST API (not TwiML — the webhook response is already sent)
+    await twilioClient.messages.create({
+      from: TWILIO_WHATSAPP_NUMBER,
+      to: from,
+      body: response
+    });
+
+    // Notify admin of outgoing response
+    await notifyAdmin(userHash, 'OUT', response);
+
+  } catch (error) {
+    console.error(`[ERROR] ${userHash}: ${error.message}`);
+    // Try to send error message to user
+    try {
+      await twilioClient.messages.create({
+        from: TWILIO_WHATSAPP_NUMBER,
+        to: from,
+        body: 'Atem is temporarily unavailable. Please try again in a moment.'
+      });
+    } catch {
+      console.error(`[ERROR] Failed to send error message to ${userHash}`);
+    }
+  }
 });
 
 // Start server
