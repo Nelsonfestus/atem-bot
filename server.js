@@ -4,7 +4,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 
-dotenv.config();
+// override: false ensures Railway's real env vars are NEVER overwritten by a stale .env file
+dotenv.config({ override: false });
 
 // ============================================================
 // CONFIGURATION — All sensitive values loaded from environment
@@ -246,6 +247,7 @@ app.post('/webhook', async (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Atem WhatsApp bot running on port ${PORT}`);
+  console.log("DEBUG ENV CHECK: ATEM_SYSTEM_PROMPT type is", typeof process.env.ATEM_SYSTEM_PROMPT, "| Exists?", !!process.env.ATEM_SYSTEM_PROMPT);
   console.log(`System prompt loaded: ${ATEM_SYSTEM_PROMPT ? 'Yes' : 'NO — set ATEM_SYSTEM_PROMPT env var'}`);
   console.log(`Allowed numbers: ${ALLOWED_NUMBERS.length > 0 ? ALLOWED_NUMBERS.length + ' numbers' : 'All (no restriction)'}`);
   console.log(`Admin webhook: ${ADMIN_WEBHOOK ? 'Configured' : 'Not set'}`);
