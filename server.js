@@ -119,7 +119,7 @@ async function getAtemResponse(userPhone, userMessage) {
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-latest',
+      model: 'claude-3-haiku-20240307',
       max_tokens: 1000,
       system: ATEM_SYSTEM_PROMPT,
       messages: messages
