@@ -89,6 +89,13 @@ function formatCardForWhatsApp(cardJson) {
     if (c.items) msg += `🍽️ ${c.items}\n\n`;
     if (c.action) msg += `➡️ *${c.action}*\n`;
 
+    // Strict Check: If it generated a totally different schema
+    // (e.g. { summary: "..." }), it means it didn't use our keys. 
+    // Return null to fall back to Claude's raw conversational text!
+    if (!c.situation && !c.nutrients && !c.timing && !c.items && !c.action) {
+      return null;
+    }
+
     // Divider
     msg += `\n───────────────\n`;
     msg += `_Tap to expand_ ⬇️\n\n`;
