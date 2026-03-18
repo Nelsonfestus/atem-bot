@@ -71,6 +71,12 @@ function addToHistory(userPhone, role, content) {
 function formatCardForWhatsApp(cardJson) {
   try {
     const card = typeof cardJson === 'string' ? JSON.parse(cardJson) : cardJson;
+    
+    // Strict verification: Must contain at minimum the 'collapsed' object
+    if (!card || !card.collapsed || typeof card.collapsed !== 'object') {
+      return null; // Signals this is not a valid card, fall back to raw text
+    }
+
     const c = card.collapsed || {};
     const e = card.expanded || {};
 
@@ -149,7 +155,18 @@ async function getAtemResponse(userPhone, userMessage) {
       .replace(/```\s*/g, '')
       .trim();
 
-    const formatted = formatCardForWhatsApp(cleaned);
+    console.log(`[DEBUG] Claude Raw Text preview:`, assistantText.substring(0, 50));
+    
+    // Attempt format
+    let formatted = null;
+    try {
+      const parsedJSON = JSON.parse(cleaned);
+      console.log(`[DEBUG] Parsed JSON keys:`, Object.keys(parsedJSON));
+      formatted = formatCardForWhatsApp(parsedJSON);
+    } catch(e) {
+      console.log(`[DEBUG] Could not JSON parse Claude response:`, e.message);
+      formatted = null;
+    }
 
     if (formatted) {
       return formatted;
