@@ -23,9 +23,18 @@ const ADMIN_WEBHOOK = process.env.ADMIN_WEBHOOK || null; // Optional Slack webho
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
-// Debug: Check if key is loaded (log prefix and length for security)
-console.log(`[CONFIG] Anthropic API Key: ${ANTHROPIC_API_KEY ? `Loaded (${ANTHROPIC_API_KEY.length} chars, starts with ${ANTHROPIC_API_KEY.substring(0, 10)}...)` : 'MISSING'}`);
+// Debug: Check if key is loaded 
+console.log(`[CONFIG] Anthropic API Key: ${ANTHROPIC_API_KEY ? `Loaded (${ANTHROPIC_API_KEY.length} chars)` : 'MISSING'}`);
 console.log(`[CONFIG] Port: ${PORT}`);
+
+// Fetch available models to see what the key actually has access to
+anthropic.models.list()
+  .then(models => {
+    console.log(`[DEBUG] Allowed Models for this API Key:`, models.data.map(m => m.id).join(', '));
+  })
+  .catch(err => {
+    console.log(`[DEBUG] Failed to fetch models:`, err.message);
+  });
 
 // ============================================================
 // CONVERSATION MEMORY — In-memory store, per user
