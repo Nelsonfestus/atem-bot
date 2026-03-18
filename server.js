@@ -19,8 +19,7 @@ const requiredEnvs = [
   'TWILIO_API_KEY',
   'TWILIO_API_SECRET',
   'TWILIO_WHATSAPP_NUMBER', 
-  'ATEM_SYSTEM_PROMPT', 
-  'ALLOWED_NUMBERS'
+  'ATEM_SYSTEM_PROMPT'
 ];
 
 for (const env of requiredEnvs) {
