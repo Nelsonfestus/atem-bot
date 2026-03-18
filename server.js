@@ -82,18 +82,20 @@ function formatCardForWhatsApp(cardJson) {
 
     let msg = '';
 
-    // Collapsed view
-    if (c.situation) msg += `${c.situation}\n\n`;
-    if (c.nutrients) msg += `${c.nutrients}\n\n`;
-    if (c.timing) msg += `🕐 ${c.timing}\n\n`;
-    if (c.items) msg += `🍽️ ${c.items}\n\n`;
-    if (c.action) msg += `➡️ *${c.action}*\n`;
-
-    // Strict Check: If it generated a totally different schema
-    // (e.g. { summary: "..." }), it means it didn't use our keys. 
-    // Return null to fall back to Claude's raw conversational text!
-    if (!c.situation && !c.nutrients && !c.timing && !c.items && !c.action) {
-      return null;
+    // If there ARE exact keys, format them nicely
+    if (c.situation || c.nutrients || c.timing || c.items || c.action) {
+      if (c.situation) msg += `${c.situation}\n\n`;
+      if (c.nutrients) msg += `${c.nutrients}\n\n`;
+      if (c.timing) msg += `🕐 ${c.timing}\n\n`;
+      if (c.items) msg += `🍽️ ${c.items}\n\n`;
+      if (c.action) msg += `➡️ *${c.action}*\n`;
+    } else {
+      // Dynamic Fallback: print whatever keys Claude invented!
+      for (const [key, value] of Object.entries(c)) {
+        if (value && typeof value === 'string') {
+          msg += `*${key.charAt(0).toUpperCase() + key.slice(1)}*:\n${value}\n\n`;
+        }
+      }
     }
 
     // Divider
@@ -103,6 +105,13 @@ function formatCardForWhatsApp(cardJson) {
     // Expanded view
     if (e.why_this_works) {
       msg += `*Why This Works*\n${e.why_this_works}\n\n`;
+    } else if (Object.keys(e).length > 0) {
+      // Dynamic fallback for expanded section
+      for (const [key, value] of Object.entries(e)) {
+        if (value && typeof value === 'string' && key !== 'supporting_steps' && key !== 'confidence') {
+          msg += `*${key.charAt(0).toUpperCase() + key.slice(1)}*:\n${value}\n\n`;
+        }
+      }
     }
 
     if (e.confidence) {
@@ -260,14 +269,17 @@ app.post('/webhook', async (req, res) => {
     console.log(`[OUT] ${userHash}: ${response?.substring(0, 100)}`);
 
     // Send reply via Twilio REST API (not TwiML — the webhook response is already sent)
+    // Twilio has a strict 1600 character limit per WhatsApp message
+    const safeResponse = response.length >= 1600 ? response.substring(0, 1590) + '...' : response;
+
     await twilioClient.messages.create({
       from: TWILIO_WHATSAPP_NUMBER,
       to: from,
-      body: response
+      body: safeResponse
     });
 
     // Notify admin of outgoing response
-    await notifyAdmin(userHash, 'OUT', response);
+    await notifyAdmin(userHash, 'OUT', safeResponse);
 
   } catch (error) {
     console.error(`[ERROR] ${userHash}: ${error.message}`);
