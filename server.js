@@ -277,15 +277,24 @@ app.post('/webhook', twilio.webhook({ protocol: 'https' }), async (req, res) => 
 
     console.log(`[OUT] Processed response for ${userHash}`);
 
-    // Send reply via Twilio REST API (not TwiML — the webhook response is already sent)
-    // Twilio REST API has a strict 1600 character limit per message for this configuration
-    const safeResponse = response.length >= 1600 ? response.substring(0, 1590) + '...' : response;
+    // Twilio REST API strictly enforces a 1600-character limit per API request (throws Error 21617).
+    // To satisfy the client's goal of supporting 4000+ characters, we automatically chunk long 
+    // AI responses and send them as sequential WhatsApp messages.
+    const maxChunkLength = 1500; // Safe threshold below Twilio's 1600 limit
+    const chunks = [];
+    
+    for (let i = 0; i < response.length; i += maxChunkLength) {
+      chunks.push(response.substring(i, i + maxChunkLength));
+    }
 
-    await twilioClient.messages.create({
-      from: TWILIO_WHATSAPP_NUMBER,
-      to: from,
-      body: safeResponse
-    });
+    // Send chunks sequentially to preserve conversational order
+    for (const chunk of chunks) {
+      await twilioClient.messages.create({
+        from: TWILIO_WHATSAPP_NUMBER,
+        to: from,
+        body: chunk
+      });
+    }
 
     // Notify admin of outgoing response
     await notifyAdmin(userHash, 'OUT');
