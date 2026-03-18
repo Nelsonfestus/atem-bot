@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.39.0",
     "dotenv": "^16.4.0",
     "express": "^4.18.0",
+    "helmet": "^8.1.0",
     "twilio": "^5.0.0"
   },
   "engines": {

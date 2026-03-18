@@ -3,15 +3,38 @@ import twilio from 'twilio';
 import Anthropic from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import helmet from 'helmet';
 
 dotenv.config();
 
 // ============================================================
 // CONFIGURATION — All sensitive values loaded from environment
 // ============================================================
+
+// 1. Startup validation
+const requiredEnvs = [
+  'ANTHROPIC_API_KEY', 
+  'TWILIO_ACCOUNT_SID', 
+  'TWILIO_AUTH_TOKEN', 
+  'TWILIO_API_KEY',
+  'TWILIO_API_SECRET',
+  'TWILIO_WHATSAPP_NUMBER', 
+  'ATEM_SYSTEM_PROMPT', 
+  'ALLOWED_NUMBERS'
+];
+
+for (const env of requiredEnvs) {
+  if (!process.env[env] && process.env[env] !== '') {
+    console.error(`[FATAL] Missing required environment variable: ${env}`);
+    process.exit(1);
+  }
+}
+
 const PORT = process.env.PORT || 3000;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
-const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN; // Kept for webhook signature validation natively
+const TWILIO_API_KEY = process.env.TWILIO_API_KEY;
+const TWILIO_API_SECRET = process.env.TWILIO_API_SECRET;
 const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER; // e.g., "whatsapp:+14155238886"
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_API_KEY.trim() : null;
 const ATEM_SYSTEM_PROMPT = process.env.ATEM_SYSTEM_PROMPT;
@@ -20,7 +43,8 @@ const ALLOWED_NUMBERS = process.env.ALLOWED_NUMBERS
   : []; // Empty = allow all. Comma-separated list of whatsapp:+numbers to restrict access.
 const ADMIN_WEBHOOK = process.env.ADMIN_WEBHOOK || null; // Optional Slack webhook for monitoring
 
-const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+// 2. Switch Twilio runtime auth to API Key + Secret
+const twilioClient = twilio(TWILIO_API_KEY, TWILIO_API_SECRET, { accountSid: TWILIO_ACCOUNT_SID });
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
 console.log(`[CONFIG] Port: ${PORT}`);
@@ -73,7 +97,7 @@ function cleanMarkdown(text) {
 function formatCardForWhatsApp(cardJson) {
   try {
     const card = typeof cardJson === 'string' ? JSON.parse(cardJson) : cardJson;
-    
+
     // Strict verification: Must contain at minimum the 'collapsed' object
     if (!card || !card.collapsed || typeof card.collapsed !== 'object') {
       return null; // Signals this is not a valid card, fall back to raw text
@@ -177,14 +201,14 @@ async function getAtemResponse(userPhone, userMessage) {
     if (jsonMatch) {
       cleaned = jsonMatch[0];
     }
-    
+
     // Attempt format
     let formatted = null;
     try {
       const parsedJSON = JSON.parse(cleaned);
       console.log(`[DEBUG] Parsed JSON keys:`, Object.keys(parsedJSON));
       formatted = formatCardForWhatsApp(parsedJSON);
-    } catch(e) {
+    } catch (e) {
       console.log(`[DEBUG] Could not JSON parse Claude response:`, e.message);
       formatted = null;
     }
@@ -198,7 +222,7 @@ async function getAtemResponse(userPhone, userMessage) {
       assistantText
         .replace(/```json/ig, '')
         .replace(/```/g, '')
-        .replace(/[\|\}]+$/g, '') 
+        .replace(/[\|\}]+$/g, '')
         .replace(/^[\s\{]+|[\s\}]+$/g, '')
     );
 
@@ -206,8 +230,6 @@ async function getAtemResponse(userPhone, userMessage) {
     console.error('--- CLAUDE API ERROR ---');
     console.error('Status:', error.status);
     console.error('Type:', error.type);
-    console.error('Message:', error.message);
-    console.error('Full Error:', JSON.stringify(error, null, 2));
     console.error('------------------------');
     return 'Atem is temporarily unavailable. Please try again in a moment.';
   }
@@ -215,20 +237,27 @@ async function getAtemResponse(userPhone, userMessage) {
 
 // ============================================================
 // ADMIN NOTIFICATION (optional — sends to Slack)
+// 4. Change to aggregate hourly counts
 // ============================================================
-async function notifyAdmin(userHash, direction) {
-  if (!ADMIN_WEBHOOK) return;
-  try {
-    await fetch(ADMIN_WEBHOOK, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: `[${direction}] User ${userHash}`
-      })
-    });
-  } catch {
-    // Silent fail — monitoring should not break the bot
-  }
+let hourlyMessageCount = 0;
+
+if (ADMIN_WEBHOOK) {
+  setInterval(async () => {
+    if (hourlyMessageCount > 0) {
+      try {
+        await fetch(ADMIN_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: `[METRICS] ${hourlyMessageCount} messages processed in the last hour.`
+          })
+        });
+        hourlyMessageCount = 0; // Reset metrics after sending
+      } catch {
+        // Silent fail — monitoring should not break the bot
+      }
+    }
+  }, 60 * 60 * 1000); // 1 hour
 }
 
 // ============================================================
@@ -237,8 +266,12 @@ async function notifyAdmin(userHash, direction) {
 const app = express();
 // Railway proxies requests so trust proxy is needed for accurate Twilio validation
 app.set('trust proxy', true);
-app.use(express.urlencoded({ extended: false }));
-app.use(express.json());
+
+// 6. Helmet and basic header hardening
+app.disable('x-powered-by');
+app.use(helmet());
+app.use(express.urlencoded({ extended: false, limit: '100kb' }));
+app.use(express.json({ limit: '100kb' }));
 
 // Health check endpoint
 app.get('/', (req, res) => {
@@ -269,26 +302,46 @@ app.post('/webhook', twilio.webhook({ protocol: 'https' }), async (req, res) => 
 
   // Process asynchronously
   try {
-    // Notify admin
-    await notifyAdmin(userHash, 'IN');
+    hourlyMessageCount++;
 
     // Get Atem response (takes time)
     const response = await getAtemResponse(from, body);
 
     console.log(`[OUT] Processed response for ${userHash}`);
 
-    // Twilio REST API strictly enforces a 1600-character limit per API request (throws Error 21617)
-    // for standard free-tier/sandbox wrappers.
-    const safeResponse = response.length >= 1600 ? response.substring(0, 1590) + '...' : response;
+    // 5. Message splitting — split at the divider line instead of truncating
+    const divider = '───────────────';
+    const chunks = [];
+    
+    if (response.includes(divider)) {
+      const parts = response.split(divider);
+      // Collapsed view (add divider back to bottom)
+      const part1 = parts[0].trim() + `\n${divider}`;
+      if (part1.trim()) chunks.push(part1);
+      
+      // Expanded view (join the rest to be safe)
+      const part2 = parts.slice(1).join(divider).trim();
+      if (part2) chunks.push(part2);
+    } else {
+      chunks.push(response.trim());
+    }
 
-    await twilioClient.messages.create({
-      from: TWILIO_WHATSAPP_NUMBER,
-      to: from,
-      body: safeResponse
-    });
-
-    // Notify admin of outgoing response
-    await notifyAdmin(userHash, 'OUT');
+    // Send chunks sequentially with short delay to naturally prevent 1600 Twilio Error
+    for (const chunk of chunks) {
+      if (!chunk) continue;
+      
+      // Safety truncate if an individual part *still* dynamically exceeds 1600 characters
+      const safeChunk = chunk.length >= 1600 ? chunk.substring(0, 1590) + '...' : chunk;
+      
+      await twilioClient.messages.create({
+        from: TWILIO_WHATSAPP_NUMBER,
+        to: from,
+        body: safeChunk
+      });
+      
+      // 1-second delay so they arrive in perfect order
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
   } catch (error) {
     console.error(`[ERROR] ${userHash}: ${error.message}`);
