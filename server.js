@@ -65,6 +65,19 @@ function addToHistory(userPhone, role, content) {
 }
 
 // ============================================================
+// CLEAN MARKDOWN
+// Strips asterisks and hashes so WhatsApp plain text looks perfect
+// ============================================================
+function cleanMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '$1') // Removes **bold** markdown
+    .replace(/(?<!\w)\*(.*?)\*(?!\w)/g, '$1') // Removes *italic* markdown asterisks
+    .replace(/^#+\s+/gm, '') // Removes header ### hashes
+    .trim();
+}
+
+// ============================================================
 // FORMAT CARD FOR WHATSAPP
 // Converts the JSON card into a readable WhatsApp message
 // ============================================================
@@ -84,16 +97,16 @@ function formatCardForWhatsApp(cardJson) {
 
     // If there ARE exact keys, format them nicely
     if (c.situation || c.nutrients || c.timing || c.items || c.action) {
-      if (c.situation) msg += `${c.situation}\n\n`;
-      if (c.nutrients) msg += `${c.nutrients}\n\n`;
-      if (c.timing) msg += `🕐 ${c.timing}\n\n`;
-      if (c.items) msg += `🍽️ ${c.items}\n\n`;
-      if (c.action) msg += `➡️ *${c.action}*\n`;
+      if (c.situation) msg += `${cleanMarkdown(c.situation)}\n\n`;
+      if (c.nutrients) msg += `${cleanMarkdown(c.nutrients)}\n\n`;
+      if (c.timing) msg += `🕐 ${cleanMarkdown(c.timing)}\n\n`;
+      if (c.items) msg += `🍽️ ${cleanMarkdown(c.items)}\n\n`;
+      if (c.action) msg += `➡️ *${cleanMarkdown(c.action)}*\n`;
     } else {
       // Dynamic Fallback: print whatever keys Claude invented!
       for (const [key, value] of Object.entries(c)) {
         if (value && typeof value === 'string') {
-          msg += `*${key.charAt(0).toUpperCase() + key.slice(1)}*:\n${value}\n\n`;
+          msg += `*${key.charAt(0).toUpperCase() + key.slice(1)}*:\n${cleanMarkdown(value)}\n\n`;
         }
       }
     }
@@ -103,28 +116,28 @@ function formatCardForWhatsApp(cardJson) {
 
     // Expanded view
     if (e.why_this_works) {
-      msg += `*Why This Works*\n${e.why_this_works}\n\n`;
+      msg += `*Why This Works*\n${cleanMarkdown(e.why_this_works)}\n\n`;
     } else if (Object.keys(e).length > 0) {
       // Dynamic fallback for expanded section
       for (const [key, value] of Object.entries(e)) {
         if (value && typeof value === 'string' && key !== 'supporting_steps' && key !== 'confidence') {
-          msg += `*${key.charAt(0).toUpperCase() + key.slice(1)}*:\n${value}\n\n`;
+          msg += `*${key.charAt(0).toUpperCase() + key.slice(1)}*:\n${cleanMarkdown(value)}\n\n`;
         }
       }
     }
 
     if (e.confidence) {
-      msg += `*Confidence:* ${e.confidence}\n\n`;
+      msg += `*Confidence:* ${cleanMarkdown(e.confidence)}\n\n`;
     }
 
     if (e.missing_context) {
-      msg += `*Would refine this:*\n_${e.missing_context}_\n\n`;
+      msg += `*Would refine this:*\n_${cleanMarkdown(e.missing_context)}_\n\n`;
     }
 
     if (e.supporting_steps && e.supporting_steps.length > 0) {
       msg += `*Supporting steps*\n`;
       e.supporting_steps.forEach((step, i) => {
-        msg += `${i + 1}. ${step}\n`;
+        msg += `${i + 1}. ${cleanMarkdown(step)}\n`;
       });
     }
 
@@ -195,12 +208,13 @@ async function getAtemResponse(userPhone, userMessage) {
     }
 
     // If not valid JSON card, return a clean version of the raw text
-    return assistantText
-      .replace(/```json/ig, '')
-      .replace(/```/g, '')
-      .replace(/[\|\}]+$/g, '') // remove trailing }} or ||
-      .replace(/^[\s\{]+|[\s\}]+$/g, '') // remove orphan braces if any
-      .trim();
+    return cleanMarkdown(
+      assistantText
+        .replace(/```json/ig, '')
+        .replace(/```/g, '')
+        .replace(/[\|\}]+$/g, '') 
+        .replace(/^[\s\{]+|[\s\}]+$/g, '')
+    );
 
   } catch (error) {
     console.error('--- CLAUDE API ERROR ---');
