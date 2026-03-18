@@ -4,10 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 
-// Only load .env file locally — Railway injects env vars natively in production
-if (process.env.NODE_ENV !== 'production') {
-  dotenv.config();
-}
+dotenv.config();
 
 // ============================================================
 // CONFIGURATION — All sensitive values loaded from environment
@@ -249,15 +246,7 @@ app.post('/webhook', async (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Atem WhatsApp bot running on port ${PORT}`);
-  console.log('ENV CHECK', {
-    hasPrompt: !!process.env.ATEM_SYSTEM_PROMPT,
-    promptLen: (process.env.ATEM_SYSTEM_PROMPT || '').length,
-    hasAnthropic: !!process.env.ANTHROPIC_API_KEY,
-    anthropicLen: (process.env.ANTHROPIC_API_KEY || '').length,
-    hasTwilioSid: !!process.env.TWILIO_ACCOUNT_SID,
-    hasTwilioToken: !!process.env.TWILIO_AUTH_TOKEN,
-    hasFrom: !!process.env.TWILIO_WHATSAPP_NUMBER
-  });
+  console.log(`System prompt loaded: ${ATEM_SYSTEM_PROMPT ? 'Yes' : 'NO — set ATEM_SYSTEM_PROMPT env var'}`);
   console.log(`Allowed numbers: ${ALLOWED_NUMBERS.length > 0 ? ALLOWED_NUMBERS.length + ' numbers' : 'All (no restriction)'}`);
   console.log(`Admin webhook: ${ADMIN_WEBHOOK ? 'Configured' : 'Not set'}`);
 });
