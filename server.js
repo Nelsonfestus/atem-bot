@@ -128,9 +128,9 @@ async function getAtemResponse(userPhone, userMessage) {
   ];
 
   try {
-    console.log(`[DEBUG] Calling Claude with model: claude-3-haiku-20240307`);
+    console.log(`[DEBUG] Calling Claude with model: claude-sonnet-4-6`);
     const response = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       system: ATEM_SYSTEM_PROMPT,
       messages: messages
