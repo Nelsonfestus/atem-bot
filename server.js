@@ -98,9 +98,8 @@ function formatCardForWhatsApp(cardJson) {
       }
     }
 
-    // Divider
-    msg += `\n───────────────\n`;
-    msg += `_Tap to expand_ ⬇️\n\n`;
+    // Divider (keeping it clean without the non-functional expand button)
+    msg += `\n───────────────\n\n`;
 
     // Expanded view
     if (e.why_this_works) {
@@ -165,13 +164,20 @@ async function getAtemResponse(userPhone, userMessage) {
     addToHistory(userPhone, 'user', userMessage);
     addToHistory(userPhone, 'assistant', assistantText);
 
-    // Try to parse as JSON card and format
-    const cleaned = assistantText
-      .replace(/```json\s*/g, '')
+    console.log(`[DEBUG] Claude Raw Text preview:`, assistantText.substring(0, 50));
+    
+    // Clean up template tags, raw markdown, or stopping sequences that might leak
+    let cleaned = assistantText
+      .replace(/```json\s*/ig, '')
       .replace(/```\s*/g, '')
+      .replace(/[\|\}]+$/g, '') // remove trailing }} or || tags at the very end
       .trim();
 
-    console.log(`[DEBUG] Claude Raw Text preview:`, assistantText.substring(0, 50));
+    // Try to safely extract just the JSON object if there is text before/after it
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      cleaned = jsonMatch[0];
+    }
     
     // Attempt format
     let formatted = null;
@@ -188,8 +194,13 @@ async function getAtemResponse(userPhone, userMessage) {
       return formatted;
     }
 
-    // If not valid JSON card, return the raw text (for conversational follow-ups)
-    return assistantText;
+    // If not valid JSON card, return a clean version of the raw text
+    return assistantText
+      .replace(/```json/ig, '')
+      .replace(/```/g, '')
+      .replace(/[\|\}]+$/g, '') // remove trailing }} or ||
+      .replace(/^[\s\{]+|[\s\}]+$/g, '') // remove orphan braces if any
+      .trim();
 
   } catch (error) {
     console.error('--- CLAUDE API ERROR ---');
