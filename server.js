@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER; // e.g., "whatsapp:+14155238886"
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_API_KEY.trim() : null;
 const ATEM_SYSTEM_PROMPT = process.env.ATEM_SYSTEM_PROMPT;
 const ALLOWED_NUMBERS = process.env.ALLOWED_NUMBERS
   ? process.env.ALLOWED_NUMBERS.split(',').map(n => n.trim())
@@ -23,8 +23,8 @@ const ADMIN_WEBHOOK = process.env.ADMIN_WEBHOOK || null; // Optional Slack webho
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
-// Debug: Check if key is loaded (log prefix only for security)
-console.log(`[CONFIG] Anthropic API Key: ${ANTHROPIC_API_KEY ? `Loaded (starts with ${ANTHROPIC_API_KEY.substring(0, 10)}...)` : 'MISSING'}`);
+// Debug: Check if key is loaded (log prefix and length for security)
+console.log(`[CONFIG] Anthropic API Key: ${ANTHROPIC_API_KEY ? `Loaded (${ANTHROPIC_API_KEY.length} chars, starts with ${ANTHROPIC_API_KEY.substring(0, 10)}...)` : 'MISSING'}`);
 console.log(`[CONFIG] Port: ${PORT}`);
 
 // ============================================================
