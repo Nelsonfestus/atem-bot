@@ -23,18 +23,7 @@ const ADMIN_WEBHOOK = process.env.ADMIN_WEBHOOK || null; // Optional Slack webho
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
-// Debug: Check if key is loaded 
-console.log(`[CONFIG] Anthropic API Key: ${ANTHROPIC_API_KEY ? `Loaded (${ANTHROPIC_API_KEY.length} chars)` : 'MISSING'}`);
 console.log(`[CONFIG] Port: ${PORT}`);
-
-// Fetch available models to see what the key actually has access to
-anthropic.models.list()
-  .then(models => {
-    console.log(`[DEBUG] Allowed Models for this API Key:`, models.data.map(m => m.id).join(', '));
-  })
-  .catch(err => {
-    console.log(`[DEBUG] Failed to fetch models:`, err.message);
-  });
 
 // ============================================================
 // CONVERSATION MEMORY — In-memory store, per user
@@ -162,10 +151,9 @@ async function getAtemResponse(userPhone, userMessage) {
   ];
 
   try {
-    console.log(`[DEBUG] Calling Claude with model: claude-sonnet-4-6`);
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1000,
+      max_tokens: 2500,
       system: ATEM_SYSTEM_PROMPT,
       messages: messages
     });
@@ -177,8 +165,6 @@ async function getAtemResponse(userPhone, userMessage) {
     addToHistory(userPhone, 'user', userMessage);
     addToHistory(userPhone, 'assistant', assistantText);
 
-    console.log(`[DEBUG] Claude Raw Text preview:`, assistantText.substring(0, 50));
-    
     // Clean up template tags, raw markdown, or stopping sequences that might leak
     let cleaned = assistantText
       .replace(/```json\s*/ig, '')
@@ -230,15 +216,14 @@ async function getAtemResponse(userPhone, userMessage) {
 // ============================================================
 // ADMIN NOTIFICATION (optional — sends to Slack)
 // ============================================================
-async function notifyAdmin(userHash, direction, message) {
+async function notifyAdmin(userHash, direction) {
   if (!ADMIN_WEBHOOK) return;
   try {
-    const truncated = message.length > 200 ? message.substring(0, 200) + '...' : message;
     await fetch(ADMIN_WEBHOOK, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        text: `[${direction}] User ${userHash}: ${truncated}`
+        text: `[${direction}] User ${userHash}`
       })
     });
   } catch {
@@ -250,6 +235,8 @@ async function notifyAdmin(userHash, direction, message) {
 // EXPRESS SERVER
 // ============================================================
 const app = express();
+// Railway proxies requests so trust proxy is needed for accurate Twilio validation
+app.set('trust proxy', true);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
 
@@ -259,16 +246,13 @@ app.get('/', (req, res) => {
 });
 
 // Twilio WhatsApp webhook — receives incoming messages
-// IMPORTANT: Responds to Twilio immediately with 200 OK, then processes
-// the AI response asynchronously and sends via REST API. This prevents
-// Twilio's 15-second webhook timeout from killing the request when the
-// AI API takes longer to respond.
-app.post('/webhook', async (req, res) => {
+// Protected by twilio.webhook() signature validation
+app.post('/webhook', twilio.webhook({ protocol: 'https' }), async (req, res) => {
   const from = req.body.From; // e.g., "whatsapp:+447123456789"
   const body = req.body.Body;
   const userHash = hashPhone(from);
 
-  console.log(`[IN] ${userHash}: ${body?.substring(0, 100)}`);
+  console.log(`[IN] Interaction recorded for ${userHash}`);
 
   // Access control — if ALLOWED_NUMBERS is set, only those numbers can use the bot
   if (ALLOWED_NUMBERS.length > 0 && !ALLOWED_NUMBERS.includes(from)) {
@@ -286,23 +270,16 @@ app.post('/webhook', async (req, res) => {
   // Process asynchronously
   try {
     // Notify admin
-    await notifyAdmin(userHash, 'IN', body);
-
-    // Give the user instant "typing..." psychological feedback
-    await twilioClient.messages.create({
-      from: TWILIO_WHATSAPP_NUMBER,
-      to: from,
-      body: '⏳ _Atem is analyzing..._'
-    });
+    await notifyAdmin(userHash, 'IN');
 
     // Get Atem response (takes time)
     const response = await getAtemResponse(from, body);
 
-    console.log(`[OUT] ${userHash}: ${response?.substring(0, 100)}`);
+    console.log(`[OUT] Processed response for ${userHash}`);
 
     // Send reply via Twilio REST API (not TwiML — the webhook response is already sent)
-    // Twilio has a strict 1600 character limit per WhatsApp message
-    const safeResponse = response.length >= 1600 ? response.substring(0, 1590) + '...' : response;
+    // Twilio WhatsApp has a 4096 character limit per message
+    const safeResponse = response.length >= 4096 ? response.substring(0, 4085) + '...' : response;
 
     await twilioClient.messages.create({
       from: TWILIO_WHATSAPP_NUMBER,
@@ -311,7 +288,7 @@ app.post('/webhook', async (req, res) => {
     });
 
     // Notify admin of outgoing response
-    await notifyAdmin(userHash, 'OUT', safeResponse);
+    await notifyAdmin(userHash, 'OUT');
 
   } catch (error) {
     console.error(`[ERROR] ${userHash}: ${error.message}`);

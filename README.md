@@ -44,18 +44,22 @@ Set these in your hosting platform's dashboard (NOT in the .env file for product
 2. You should receive a formatted response within 10-15 seconds
 3. Verify the health check: `GET https://your-deployed-url.com/` should return `{"status": "ok"}`
 
-### Step 5: Handoff
-Provide the founder with:
-- [ ] Hosting platform login (or transfer project ownership)
-- [ ] The deployed URL
-- [ ] Confirmation that the Twilio webhook is configured
-- [ ] Brief walkthrough of how to update environment variables
-- [ ] Access to server logs
+### Step 5: Client Handoff (Security-First)
+Following the client's request for strict security, you should not ask for or receive their production keys. Instead:
 
-**After handoff, the founder will:**
-- Replace the placeholder system prompt with the production prompt
-- Add the allowed phone numbers for beta testers
-- Optionally configure the Slack monitoring webhook
+1.  **Invite to Dashboard**: 
+    *   **Railway**: Project Settings → Members → Invite by Email.
+    *   **Vercel**: Team Settings → Members → Invite by Email.
+2.  **Instruction for Client**: Once invited, the client will:
+    *   Go to the **Variables** or **Environment Variables** tab.
+    *   Paste their production `ANTHROPIC_API_KEY`, `TWILIO_AUTH_TOKEN`, and `ATEM_SYSTEM_PROMPT`.
+    *   The platform will automatically redeploy with the secure keys.
+3.  **Handoff Checklist**:
+    - [ ] Project private repository URL provided.
+    - [ ] Deployed URL provided (e.g., `atem-bot.up.railway.app`).
+    - [ ] Twilio webhook configured to use that URL.
+    - [ ] Client invited as a member to the hosting platform.
+    - [ ] Client confirmed production keys are injected.
 
 ## Local Development (for testing)
 
