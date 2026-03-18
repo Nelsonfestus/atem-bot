@@ -15,7 +15,7 @@ const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
 const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER; // e.g., "whatsapp:+14155238886"
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const ATEM_SYSTEM_PROMPT = process.env.ATEM_SYSTEM_PROMPT;
+const ATEM_SYSTEM_PROMPT = process.env.ATEM_SYSTEM_PROMPT || "You are a helpful health and performance advisor for busy professionals. When given context about someone's day, generate a recommendation. Respond only in valid JSON with a 'collapsed' object and an 'expanded' object.";
 const ALLOWED_NUMBERS = process.env.ALLOWED_NUMBERS
   ? process.env.ALLOWED_NUMBERS.split(',').map(n => n.trim())
   : []; // Empty = allow all. Comma-separated list of whatsapp:+numbers to restrict access.
@@ -248,7 +248,8 @@ app.post('/webhook', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Atem WhatsApp bot running on port ${PORT}`);
   console.log("DEBUG ENV CHECK: ATEM_SYSTEM_PROMPT type is", typeof process.env.ATEM_SYSTEM_PROMPT, "| Exists?", !!process.env.ATEM_SYSTEM_PROMPT);
-  console.log(`System prompt loaded: ${ATEM_SYSTEM_PROMPT ? 'Yes' : 'NO — set ATEM_SYSTEM_PROMPT env var'}`);
+  const promptSource = process.env.ATEM_SYSTEM_PROMPT ? 'env var' : 'placeholder fallback';
+  console.log(`System prompt loaded: Yes (source: ${promptSource})`);
   console.log(`Allowed numbers: ${ALLOWED_NUMBERS.length > 0 ? ALLOWED_NUMBERS.length + ' numbers' : 'All (no restriction)'}`);
   console.log(`Admin webhook: ${ADMIN_WEBHOOK ? 'Configured' : 'Not set'}`);
 });
