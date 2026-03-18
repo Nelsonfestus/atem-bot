@@ -119,6 +119,7 @@ async function getAtemResponse(userPhone, userMessage) {
   ];
 
   try {
+    console.log(`[DEBUG] Calling Claude with model: claude-3-haiku-20240307`);
     const response = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 1000,
@@ -127,6 +128,7 @@ async function getAtemResponse(userPhone, userMessage) {
     });
 
     const assistantText = response.content?.[0]?.text || '';
+    console.log(`[DEBUG] Claude responded successfully`);
 
     // Store in history
     addToHistory(userPhone, 'user', userMessage);
@@ -148,7 +150,12 @@ async function getAtemResponse(userPhone, userMessage) {
     return assistantText;
 
   } catch (error) {
-    console.error('Claude API error:', error.message);
+    console.error('--- CLAUDE API ERROR ---');
+    console.error('Status:', error.status);
+    console.error('Type:', error.type);
+    console.error('Message:', error.message);
+    console.error('Full Error:', JSON.stringify(error, null, 2));
+    console.error('------------------------');
     return 'Atem is temporarily unavailable. Please try again in a moment.';
   }
 }
