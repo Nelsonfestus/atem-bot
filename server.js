@@ -19,7 +19,8 @@ const requiredEnvs = [
   'TWILIO_API_KEY',
   'TWILIO_API_SECRET',
   'TWILIO_WHATSAPP_NUMBER', 
-  'ATEM_SYSTEM_PROMPT'
+  'ATEM_SYSTEM_PROMPT',
+  'ALLOWED_NUMBERS'
 ];
 
 for (const env of requiredEnvs) {
@@ -343,7 +344,7 @@ app.post('/webhook', twilio.webhook({ protocol: 'https' }), async (req, res) => 
     }
 
   } catch (error) {
-    console.error(`[ERROR] ${userHash}: ${error.message}`);
+    console.error(`[ERROR] ${userHash}: request failed`);
     // Try to send error message to user
     try {
       await twilioClient.messages.create({
