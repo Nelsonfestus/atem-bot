@@ -254,16 +254,23 @@ app.post('/webhook', async (req, res) => {
     return;
   }
 
-  // Immediately acknowledge Twilio with empty TwiML (prevents 15s timeout)
+  // Acknowledge Twilio immediately
   const twiml = new twilio.twiml.MessagingResponse();
   res.type('text/xml').send(twiml.toString());
 
-  // Process asynchronously — Twilio connection is already closed
+  // Process asynchronously
   try {
-    // Notify admin of incoming message
+    // Notify admin
     await notifyAdmin(userHash, 'IN', body);
 
-    // Get Atem response (may take 10-30 seconds)
+    // Give the user instant "typing..." psychological feedback
+    await twilioClient.messages.create({
+      from: TWILIO_WHATSAPP_NUMBER,
+      to: from,
+      body: '⏳ _Atem is analyzing..._'
+    });
+
+    // Get Atem response (takes time)
     const response = await getAtemResponse(from, body);
 
     console.log(`[OUT] ${userHash}: ${response?.substring(0, 100)}`);
