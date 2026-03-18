@@ -20,11 +20,12 @@ const ALLOWED_NUMBERS = process.env.ALLOWED_NUMBERS
   : []; // Empty = allow all. Comma-separated list of whatsapp:+numbers to restrict access.
 const ADMIN_WEBHOOK = process.env.ADMIN_WEBHOOK || null; // Optional Slack webhook for monitoring
 
-// ============================================================
-// CLIENTS
-// ============================================================
 const twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
 const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+
+// Debug: Check if key is loaded (log prefix only for security)
+console.log(`[CONFIG] Anthropic API Key: ${ANTHROPIC_API_KEY ? `Loaded (starts with ${ANTHROPIC_API_KEY.substring(0, 10)}...)` : 'MISSING'}`);
+console.log(`[CONFIG] Port: ${PORT}`);
 
 // ============================================================
 // CONVERSATION MEMORY — In-memory store, per user
