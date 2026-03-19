@@ -40,7 +40,7 @@ const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY ? process.env.ANTHROPIC_
 const ATEM_SYSTEM_PROMPT = process.env.ATEM_SYSTEM_PROMPT;
 const ALLOWED_NUMBERS = process.env.ALLOWED_NUMBERS
   ? process.env.ALLOWED_NUMBERS.split(',').map(n => n.trim())
-  : []; // Empty = allow all. Comma-separated list of whatsapp:+numbers to restrict access.
+  : []; // The app will not start without this value. Comma-separated list of whatsapp:+numbers to restrict access.
 const ADMIN_WEBHOOK = process.env.ADMIN_WEBHOOK || null; // Optional Slack webhook for monitoring
 
 // 2. Switch Twilio runtime auth to API Key + Secret
@@ -253,8 +253,8 @@ if (ADMIN_WEBHOOK) {
           })
         });
         hourlyMessageCount = 0; // Reset metrics after sending
-      } catch {
-        // Silent fail — monitoring should not break the bot
+      } catch (error) {
+        console.error(`[ERROR] Failed to send to Slack webhook:`, error);
       }
     }
   }, 60 * 60 * 1000); // 1 hour
