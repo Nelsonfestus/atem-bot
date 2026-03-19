@@ -180,6 +180,9 @@ async function getAtemResponse(userPhone, userMessage) {
       max_tokens: 2500,
       system: ATEM_SYSTEM_PROMPT,
       messages: messages
+    }, {
+      timeout: 30000,
+      maxRetries: 1
     });
 
     const assistantText = response.content?.[0]?.text || '';
@@ -193,7 +196,6 @@ async function getAtemResponse(userPhone, userMessage) {
     let cleaned = assistantText
       .replace(/```json\s*/ig, '')
       .replace(/```\s*/g, '')
-      .replace(/[\|\}]+$/g, '') // remove trailing }} or || tags at the very end
       .trim();
 
     // Try to safely extract just the JSON object if there is text before/after it
@@ -222,7 +224,6 @@ async function getAtemResponse(userPhone, userMessage) {
       assistantText
         .replace(/```json/ig, '')
         .replace(/```/g, '')
-        .replace(/[\|\}]+$/g, '')
         .replace(/^[\s\{]+|[\s\}]+$/g, '')
     );
 
@@ -278,34 +279,79 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok', service: 'atem-whatsapp-bot', timestamp: new Date().toISOString() });
 });
 
+// ============================================================
+// MESSAGE QUEUE FOR DEBOUNCING
+// ============================================================
+const messageQueue = new Map();
+
 // Twilio WhatsApp webhook — receives incoming messages
 // Protected by twilio.webhook() signature validation
 app.post('/webhook', twilio.webhook({ protocol: 'https' }), async (req, res) => {
   const from = req.body.From; // e.g., "whatsapp:+447123456789"
-  const body = req.body.Body;
+  const body = req.body.Body ? req.body.Body.trim() : '';
+  const numMedia = parseInt(req.body.NumMedia || '0', 10);
   const userHash = hashPhone(from);
+
+  // Acknowledge Twilio immediately so it doesn't timeout
+  const twiml = new twilio.twiml.MessagingResponse();
+  res.type('text/xml').send(twiml.toString());
 
   console.log(`[IN] Interaction recorded for ${userHash}`);
 
   // Access control — if ALLOWED_NUMBERS is set, only those numbers can use the bot
   if (ALLOWED_NUMBERS.length > 0 && !ALLOWED_NUMBERS.includes(from)) {
     console.log(`[BLOCKED] ${userHash}: not in allowed numbers list`);
-    const twiml = new twilio.twiml.MessagingResponse();
-    twiml.message('This service is currently in private beta. Contact the founder for access.');
-    res.type('text/xml').send(twiml.toString());
+    try {
+      await twilioClient.messages.create({
+        from: TWILIO_WHATSAPP_NUMBER,
+        to: from,
+        body: 'This service is currently in private beta. Contact the founder for access.'
+      });
+    } catch (e) {
+      console.error(`[ERROR] Failed to send blocked message to ${userHash}`);
+    }
     return;
   }
 
-  // Acknowledge Twilio immediately
-  const twiml = new twilio.twiml.MessagingResponse();
-  res.type('text/xml').send(twiml.toString());
+  // Guard for media / empty messages
+  if (numMedia > 0 || !body) {
+    console.log(`[MEDIA GUARD] ${userHash}: media or empty message received`);
+    try {
+      await twilioClient.messages.create({
+        from: TWILIO_WHATSAPP_NUMBER,
+        to: from,
+        body: 'Atem currently supports text messages only - voice notes and images coming soon.'
+      });
+    } catch {
+      console.error(`[ERROR] Failed to send media guard message to ${userHash}`);
+    }
+    return;
+  }
 
-  // Process asynchronously
-  try {
-    hourlyMessageCount++;
+  // Debounce logic
+  if (!messageQueue.has(from)) {
+    messageQueue.set(from, { messages: [], timer: null });
+  }
 
-    // Get Atem response (takes time)
-    const response = await getAtemResponse(from, body);
+  const queue = messageQueue.get(from);
+  if (body) {
+    queue.messages.push(body);
+  }
+
+  if (queue.timer) {
+    clearTimeout(queue.timer);
+  }
+
+  queue.timer = setTimeout(async () => {
+    const combinedMessage = queue.messages.join('\n');
+    messageQueue.delete(from);
+
+    // Process asynchronously
+    try {
+      hourlyMessageCount++;
+
+      // Get Atem response (takes time)
+      const response = await getAtemResponse(from, combinedMessage);
 
     console.log(`[OUT] Processed response for ${userHash}`);
 
@@ -356,12 +402,13 @@ app.post('/webhook', twilio.webhook({ protocol: 'https' }), async (req, res) => 
       console.error(`[ERROR] Failed to send error message to ${userHash}`);
     }
   }
+  }, 4000); // 4 second debounce
 });
 
 // Start server
 app.listen(PORT, () => {
   console.log(`Atem WhatsApp bot running on port ${PORT}`);
   console.log(`System prompt loaded: ${ATEM_SYSTEM_PROMPT ? 'Yes' : 'NO — set ATEM_SYSTEM_PROMPT env var'}`);
-  console.log(`Allowed numbers: ${ALLOWED_NUMBERS.length > 0 ? ALLOWED_NUMBERS.length + ' numbers' : 'All (no restriction)'}`);
+  console.log(`Allowed numbers: ${ALLOWED_NUMBERS.length} configured`);
   console.log(`Admin webhook: ${ADMIN_WEBHOOK ? 'Configured' : 'Not set'}`);
 });
